@@ -226,7 +226,7 @@ preprocessing:
   # Missing data handling
   missing_data:
     strategy: "forward_fill_then_median"  # Options: forward_fill, median, knn
-    max_missing_ratio: 0.5  # Drop features with >50% missing
+    max_missing_ratio: 0.90  # Drop features with >90% missing
 
   # Outlier detection
   outliers:
