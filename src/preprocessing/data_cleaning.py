@@ -341,6 +341,14 @@ class DataCleaner:
         data_clean = data.copy()
         initial_missing = data_clean.isnull().sum().sum()
 
+        # Strategy 1: Forward fill (for temporal data) - do this BEFORE separating ID columns
+        if temporal and 'stay_id' in data_clean.columns and 'time_window' in data_clean.columns:
+            logger.info("  Using forward fill for temporal data...")
+            # Sort by stay_id and time_window to ensure proper temporal ordering
+            data_clean = data_clean.sort_values(['stay_id', 'time_window'])
+            # Group by stay_id and forward fill within each stay
+            data_clean = data_clean.groupby('stay_id', group_keys=False).fillna(method='ffill')
+
         # Separate ID columns
         id_cols = ['stay_id', 'time_window', 'subject_id', 'hadm_id']
         id_cols_present = [col for col in id_cols if col in data_clean.columns]
@@ -351,11 +359,6 @@ class DataCleaner:
         else:
             ids = None
             features = data_clean
-
-        # Strategy 1: Forward fill (for temporal data)
-        if temporal and 'stay_id' in data_clean.columns and 'time_window' in data_clean.columns:
-            logger.info("  Using forward fill for temporal data...")
-            features = features.groupby('stay_id').fillna(method='ffill')
 
         # Strategy 2: Median imputation
         if self.strategy in ['median', 'forward_fill_then_median']:
