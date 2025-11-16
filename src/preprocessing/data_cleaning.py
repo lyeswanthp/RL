@@ -341,24 +341,31 @@ class DataCleaner:
         data_clean = data.copy()
         initial_missing = data_clean.isnull().sum().sum()
 
-        # Strategy 1: Forward fill (for temporal data) - do this BEFORE separating ID columns
-        if temporal and 'stay_id' in data_clean.columns and 'time_window' in data_clean.columns:
-            logger.info("  Using forward fill for temporal data...")
-            # Sort by stay_id and time_window to ensure proper temporal ordering
-            data_clean = data_clean.sort_values(['stay_id', 'time_window'])
-            # Group by stay_id and forward fill within each stay
-            data_clean = data_clean.groupby('stay_id', group_keys=False).fillna(method='ffill')
-
-        # Separate ID columns
+        # Separate ID columns FIRST to preserve them
         id_cols = ['stay_id', 'time_window', 'subject_id', 'hadm_id']
         id_cols_present = [col for col in id_cols if col in data_clean.columns]
 
         if id_cols_present:
-            ids = data_clean[id_cols_present]
-            features = data_clean.drop(columns=id_cols_present)
+            ids = data_clean[id_cols_present].copy()
+            features = data_clean.drop(columns=id_cols_present).copy()
         else:
             ids = None
-            features = data_clean
+            features = data_clean.copy()
+
+        # Strategy 1: Forward fill (for temporal data)
+        if temporal and 'stay_id' in id_cols_present and 'time_window' in id_cols_present:
+            logger.info("  Using forward fill for temporal data...")
+            # Combine IDs with features for temporal processing
+            temp_data = pd.concat([ids, features], axis=1)
+            # Sort by stay_id and time_window to ensure proper temporal ordering
+            temp_data = temp_data.sort_values(['stay_id', 'time_window'])
+            # Group by stay_id and forward fill within each stay
+            temp_data = temp_data.groupby('stay_id', group_keys=False).apply(
+                lambda group: group.ffill()
+            )
+            # Re-separate IDs and features
+            ids = temp_data[id_cols_present].copy()
+            features = temp_data.drop(columns=id_cols_present).copy()
 
         # Strategy 2: Median imputation
         if self.strategy in ['median', 'forward_fill_then_median']:
@@ -379,9 +386,12 @@ class DataCleaner:
                 imputer = KNNImputer(n_neighbors=5)
                 features[numeric_cols] = imputer.fit_transform(features[numeric_cols])
 
-        # Combine back with IDs
+        # Combine back with IDs - ensure index alignment
         if ids is not None:
-            data_clean = pd.concat([ids, features], axis=1)
+            # Reset indices to ensure proper alignment
+            ids_reset = ids.reset_index(drop=True)
+            features_reset = features.reset_index(drop=True)
+            data_clean = pd.concat([ids_reset, features_reset], axis=1)
         else:
             data_clean = features
 
