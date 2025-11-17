@@ -378,12 +378,17 @@ class DataCleaner:
                     features[col].fillna(median_val, inplace=True)
 
         # Strategy 3: KNN imputation (more sophisticated)
-        elif self.strategy == 'knn':
-            logger.info("  Using KNN imputation...")
+        elif self.strategy in ['knn', 'forward_fill_then_knn']:
+            # Get KNN parameters from config
+            knn_neighbors = self.preprocessing_config.get('missing_data', {}).get('knn_neighbors', 1)
+
+            logger.info(f"  Using KNN imputation (k={knn_neighbors})...")
             numeric_cols = features.select_dtypes(include=[np.number]).columns
 
             if len(numeric_cols) > 0:
-                imputer = KNNImputer(n_neighbors=5)
+                # Use nan_euclidean metric to handle any remaining missing values
+                # k=1 matches original AI Clinician methodology
+                imputer = KNNImputer(n_neighbors=knn_neighbors, metric='nan_euclidean')
                 features[numeric_cols] = imputer.fit_transform(features[numeric_cols])
 
         # Combine back with IDs - ensure index alignment
